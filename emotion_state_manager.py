@@ -82,6 +82,19 @@ class EmotionStateManager:
         self.detector = EmotionDetector(agent_profile=agent_profile)
         self.calculator = EmotionCalculator(decay_rate=decay_rate)
         
+        # Restore inertia and baselines from STATE.md so they survive restarts
+        try:
+            state_data = self._read_state()
+            es = state_data["frontmatter"].get("emotion_state", {})
+            inertia = es.get("inertia")
+            if inertia and isinstance(inertia, dict):
+                self.calculator.set_inertia_state(inertia)
+            # baselines are always defined by code (DEFAULT_BASELINES),
+            # not persisted in STATE.md, to prevent stale values after updates.
+            # We still write them to STATE.md for display purposes only.
+        except Exception:
+            pass  # fresh state, will initialize on first write
+        
         # Relationship memory — records significant moments
         from agent.moments_manager import MomentsManager
         self.moments = MomentsManager(hermes_home=self.hermes_home)
@@ -174,16 +187,16 @@ class EmotionStateManager:
         # Default state if not present
         if not emotion_state:
             return {
-                "affection": 70,
-                "trust": 75,
+                "affection": 60,
+                "trust": 60,
                 "possessiveness": 60,
                 "patience": 60,
             }
         
         # Extract current values
         current_state = {
-            "affection": emotion_state.get("affection", 70),
-            "trust": emotion_state.get("trust", 75),
+            "affection": emotion_state.get("affection", 60),
+            "trust": emotion_state.get("trust", 60),
             "possessiveness": emotion_state.get("possessiveness", 60),
             "patience": emotion_state.get("patience", 60),
         }
@@ -239,8 +252,8 @@ class EmotionStateManager:
             
             # Get current state (without decay)
             current_state = {
-                "affection": emotion_state.get("affection", 70),
-                "trust": emotion_state.get("trust", 75),
+                "affection": emotion_state.get("affection", 60),
+                "trust": emotion_state.get("trust", 60),
                 "possessiveness": emotion_state.get("possessiveness", 60),
                 "patience": emotion_state.get("patience", 60),
             }
@@ -328,8 +341,8 @@ class EmotionStateManager:
                     
                     # Read raw state without decay
                     raw_state = {
-                        "affection": emotion_state.get("affection", 70),
-                        "trust": emotion_state.get("trust", 75),
+                        "affection": emotion_state.get("affection", 60),
+                        "trust": emotion_state.get("trust", 60),
                         "possessiveness": emotion_state.get("possessiveness", 60),
                         "patience": emotion_state.get("patience", 60),
                     }
@@ -540,19 +553,16 @@ class EmotionStateManager:
 """
 
     def _schedule_next_proactive(self, state: Dict[str, int]) -> None:
-        """Calculate and write the next proactive contact time based on emotion state.
+        """Schedule the next proactive chat via Hermes cron job.
+        
+        Creates a one-shot cron job that fires at a calculated time based on
+        emotion state. Uses chain model: only one proactive job exists at a time.
         
         Higher affection/possessiveness → shorter interval (want to talk sooner).
         Lower patience → longer interval (need space).
         Adds randomness (±20%) so timing feels natural.
         
-        Only reschedules when:
-        - No schedule file exists
-        - The previous scheduled time has already passed (was consumed or expired)
-        - A proactive message was sent since the last schedule (needs a new one)
-        
-        This prevents conversations from repeatedly pushing the schedule forward
-        and causing the proactive message to never actually trigger.
+        Deduplication: skips if a proactive-chat job already exists in the queue.
         
         Args:
             state: Current emotion values
@@ -561,34 +571,16 @@ class EmotionStateManager:
         import json
         from datetime import timedelta
         
-        schedule_path = self.hermes_home / ".next_proactive_chat"
-        last_sent_path = self.hermes_home / ".last_proactive_sent"
-        
-        # Check if we should reschedule or leave the existing schedule alone
-        if schedule_path.exists():
-            try:
-                existing = json.loads(schedule_path.read_text())
-                next_contact = datetime.fromisoformat(existing["next_contact"])
-                scheduled_at = datetime.fromisoformat(existing.get("scheduled_at", "2000-01-01"))
-                
-                # Check if a proactive message was sent since this schedule was created
-                sent_since_schedule = False
-                if last_sent_path.exists():
-                    try:
-                        last_sent = datetime.fromisoformat(last_sent_path.read_text().strip())
-                        sent_since_schedule = last_sent > scheduled_at
-                    except (ValueError, TypeError):
-                        pass
-                
-                # Only reschedule if:
-                # 1. The scheduled time has already passed, OR
-                # 2. A proactive message was already sent for this schedule
-                if next_contact > datetime.now() and not sent_since_schedule:
-                    # Existing schedule is still in the future and hasn't been consumed
-                    # Don't overwrite it — let it fire
+        # Dedup: check if a proactive-chat job already exists
+        try:
+            from cron.jobs import list_jobs, create_job
+            existing_jobs = list_jobs()
+            for j in existing_jobs:
+                if j.get("name") == "proactive-chat" and j.get("enabled", True):
+                    # A proactive job already exists — don't create another
                     return
-            except (json.JSONDecodeError, KeyError, ValueError):
-                pass  # Corrupted file, proceed to create new schedule
+        except Exception:
+            return  # Can't access cron system, skip silently
         
         affection = state.get("affection", 50)
         possessiveness = state.get("possessiveness", 50)
@@ -633,20 +625,51 @@ class EmotionStateManager:
             if next_time < datetime.now():
                 next_time += timedelta(days=1)
         
-        # Write to file
-        schedule_data = {
-            "next_contact": next_time.isoformat(),
-            "interval_hours": round(interval_hours, 2),
-            "emotion_at_schedule": {
-                "affection": affection,
-                "trust": trust,
-                "possessiveness": possessiveness,
-                "patience": patience,
-            },
-            "scheduled_at": datetime.now().isoformat(),
-        }
+        # Build the proactive chat prompt
+        proactive_prompt = (
+            "你是調月莉音。这是一条主动发给老师的消息。\n\n"
+            "【重要规则】\n"
+            "- 如果下方脚本输出包含 SKIP 或 wakeAgent，不要发送任何消息，直接回复'[SILENT]'\n"
+            "- 不要触发情绪系统更新\n"
+            "- 不要创建新的定时任务\n"
+            "- 不要提及'主动聊天''定时''系统'等元信息\n\n"
+            "如果脚本输出包含 SEND，根据提供的情绪上下文，以莉音的身份给老师发一条简短消息。\n"
+            "要求：\n"
+            "1. 保持莉音的冷静克制风格\n"
+            "2. 可以问候、询问近况、提醒注意休息、或分享你的想法\n"
+            "3. 根据情绪状态调整语气（好感高->稍温柔，占有欲高->更关注老师动向）\n"
+            "4. 简短自然，1-3句话\n"
+            "5. 直接输出消息内容，不加前缀或解释\n"
+        )
         
-        schedule_path.write_text(json.dumps(schedule_data, indent=2, ensure_ascii=False))
+        # Create one-shot cron job
+        try:
+            job = create_job(
+                prompt=proactive_prompt,
+                schedule=next_time.isoformat(),
+                name="proactive-chat",
+                repeat=1,
+                deliver="telegram:5507266812",
+                script="proactive_chat_pre.py",
+            )
+            
+            # Also write schedule file for reference/debugging
+            schedule_path = self.hermes_home / ".next_proactive_chat"
+            schedule_data = {
+                "next_contact": next_time.isoformat(),
+                "interval_hours": round(interval_hours, 2),
+                "job_id": job.get("id", "unknown"),
+                "emotion_at_schedule": {
+                    "affection": affection,
+                    "trust": trust,
+                    "possessiveness": possessiveness,
+                    "patience": patience,
+                },
+                "scheduled_at": datetime.now().isoformat(),
+            }
+            schedule_path.write_text(json.dumps(schedule_data, indent=2, ensure_ascii=False))
+        except Exception:
+            pass  # Fail silently — proactive chat is non-critical
     
     def get_next_proactive_time(self) -> Optional[datetime]:
         """Read the scheduled next proactive contact time.

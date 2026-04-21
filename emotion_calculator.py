@@ -21,20 +21,20 @@ class EmotionCalculator:
 
     # ── Baselines ────────────────────────────────────────────────────
     DEFAULT_BASELINES = {
-        "affection": 70,
-        "trust": 75,
+        "affection": 60,
+        "trust": 60,
         "possessiveness": 60,
         "patience": 60,
     }
 
     # ── Dynamic α parameters ─────────────────────────────────────────
     # α escalates with consecutive same-direction triggers, resets on reversal
-    ALPHA_STAGES = [0.20, 0.30, 0.45, 0.60]  # stage 0→1→2→3
-    ALPHA_RESET = 0.20                         # on direction reversal
+    ALPHA_STAGES = [0.40, 0.55, 0.65, 0.80, 0.95]  # stage 0→1→2→3→4
+    ALPHA_RESET = 0.40                               # on direction reversal
 
     # ── Momentum (inertia) parameters ────────────────────────────────
     MOMENTUM_HISTORY = 5          # track last N trigger directions
-    MOMENTUM_STAGES = [1.0, 1.1, 1.2, 1.35, 1.5]  # multiplier per consecutive count
+    MOMENTUM_STAGES = [1.0, 1.15, 1.30, 1.45, 1.60]  # multiplier per consecutive count
 
     # ── Non-linear decay parameters ──────────────────────────────────
     # Deviation from baseline → decay factor per hour
@@ -222,7 +222,7 @@ class EmotionCalculator:
         trust_gap = baseline_trust - current_trust  # positive when trust is low
 
         scale = 1.0 - trust_gap * 0.03
-        scale = max(0.1, scale)  # never fully suppress patience changes
+        scale = max(0.1, min(1.0, scale))  # cap [0.1, 1.0]: trust above baseline does NOT amplify
 
         raw_delta = deltas["patience"]
         adjusted_delta = raw_delta * scale * momentum

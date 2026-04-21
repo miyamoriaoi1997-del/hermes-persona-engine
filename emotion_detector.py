@@ -428,41 +428,41 @@ class EmotionDetector:
     TRIGGER_DELTAS = {
         'intimacy': {
             'deltas': {
-                'mild':     {'affection': 3,  'trust': 2,  'possessiveness': 1},
-                'moderate': {'affection': 7,  'trust': 4,  'possessiveness': 3},
-                'intense':  {'affection': 12, 'trust': 6,  'possessiveness': 5},
+                'mild':     {'possessiveness': 5,  'affection': 3},
+                'moderate': {'possessiveness': 10, 'affection': 6,  'trust': 3},
+                'intense':  {'possessiveness': 15, 'affection': 10, 'trust': 5},
             },
             'confidence': 0.9,
         },
         'teasing': {
             'deltas': {
-                'mild':     {'affection': 2,  'possessiveness': 1,  'patience': -1},
-                'moderate': {'affection': 4,  'possessiveness': 3,  'patience': -2},
-                'intense':  {'affection': 6,  'possessiveness': 5,  'patience': -3},
+                'mild':     {'affection': 2,  'possessiveness': 2,  'patience': -1},
+                'moderate': {'affection': 4,  'possessiveness': 4,  'patience': -2},
+                'intense':  {'affection': 6,  'possessiveness': 6,  'patience': -3},
             },
             'confidence': 0.85,
         },
         'praise': {
             'deltas': {
-                'mild':     {'affection': 3,  'trust': 2,  'patience': 2},
-                'moderate': {'affection': 7,  'trust': 4,  'patience': 4},
-                'intense':  {'affection': 12, 'trust': 6,  'patience': 6},
+                'mild':     {'affection': 5,  'trust': 2},
+                'moderate': {'affection': 10, 'trust': 5,  'possessiveness': 2},
+                'intense':  {'affection': 15, 'trust': 8,  'possessiveness': 4},
             },
             'confidence': 0.85,
         },
         'care': {
             'deltas': {
-                'mild':     {'trust': 3,  'affection': 1, 'patience': 3},
-                'moderate': {'trust': 6,  'affection': 3, 'patience': 5},
-                'intense':  {'trust': 9,  'affection': 5, 'patience': 7},
+                'mild':     {'trust': 4,  'affection': 2, 'patience': 2},
+                'moderate': {'trust': 8,  'affection': 4, 'patience': 3},
+                'intense':  {'trust': 12, 'affection': 6, 'patience': 5},
             },
             'confidence': 0.8,
         },
         'encouragement': {
             'deltas': {
-                'mild':     {'trust': 2,  'affection': 1, 'patience': 1},
-                'moderate': {'trust': 4,  'affection': 2, 'patience': 2},
-                'intense':  {'trust': 6,  'affection': 4, 'patience': 4},
+                'mild':     {'trust': 3,  'affection': 1, 'patience': 1},
+                'moderate': {'trust': 6,  'affection': 3, 'patience': 2},
+                'intense':  {'trust': 9,  'affection': 5, 'patience': 3},
             },
             'confidence': 0.75,
         },
@@ -474,35 +474,43 @@ class EmotionDetector:
             },
             'confidence': 0.7,
         },
+        'gratitude': {
+            'deltas': {
+                'mild':     {'trust': 5,  'affection': 2},
+                'moderate': {'trust': 10, 'affection': 5},
+                'intense':  {'trust': 15, 'affection': 8},
+            },
+            'confidence': 0.8,
+        },
         'apology': {
             'deltas': {
-                'mild':     {'trust': 2,  'patience': 3,  'affection': 1},
-                'moderate': {'trust': 4,  'patience': 7,  'affection': 2},
-                'intense':  {'trust': 6,  'patience': 12, 'affection': 4},
+                'mild':     {'trust': 3,  'patience': 4,  'affection': 1},
+                'moderate': {'trust': 5,  'patience': 8,  'affection': 3},
+                'intense':  {'trust': 8,  'patience': 12, 'affection': 5},
             },
             'confidence': 0.8,
         },
         'sharing': {
             'deltas': {
                 'mild':     {'trust': 3,  'affection': 1, 'possessiveness': 1},
-                'moderate': {'trust': 6,  'affection': 2, 'possessiveness': 2},
-                'intense':  {'trust': 9,  'affection': 3, 'possessiveness': 3},
+                'moderate': {'trust': 6,  'affection': 3, 'possessiveness': 2},
+                'intense':  {'trust': 9,  'affection': 5, 'possessiveness': 4},
             },
             'confidence': 0.75,
         },
         'other_ai_mentioned': {
             'deltas': {
-                'mild':     {'possessiveness': 6,  'affection': -1, 'patience': -2},
-                'moderate': {'possessiveness': 12, 'affection': -3, 'patience': -5},
-                'intense':  {'possessiveness': 18, 'affection': -6, 'patience': -9},
+                'mild':     {'possessiveness': 5,  'patience': -3},
+                'moderate': {'possessiveness': 10, 'patience': -6,  'trust': -3},
+                'intense':  {'possessiveness': 15, 'patience': -10, 'trust': -5},
             },
             'confidence': 0.95,
         },
         'criticism': {
             'deltas': {
-                'mild':     {'patience': -5,  'affection': -2},
-                'moderate': {'patience': -11, 'affection': -5},
-                'intense':  {'patience': -18, 'affection': -9},
+                'mild':     {'patience': -5},
+                'moderate': {'patience': -10, 'trust': -3},
+                'intense':  {'patience': -15, 'trust': -5,  'affection': -3},
             },
             'confidence': 0.8,
         },
@@ -510,7 +518,7 @@ class EmotionDetector:
             'deltas': {
                 'mild':     {'patience': -3, 'trust': -2},
                 'moderate': {'patience': -6, 'trust': -4},
-                'intense':  {'patience': -11, 'trust': -6},
+                'intense':  {'patience': -10, 'trust': -6},
             },
             'confidence': 0.7,
         },
