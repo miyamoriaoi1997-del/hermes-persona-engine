@@ -144,10 +144,17 @@ self.emotion_manager.apply_time_decay_if_needed()
 
 # 3. 实时更新（接收消息后）
 event = self.emotion_manager.detector.detect_emotion_event(messages)
-if event:
-    self.emotion_manager.update_emotion_state(
-        messages=messages,
-        trigger_event=event
+self.emotion_manager.update_emotion_state(messages)
+
+# 4. 记录重要时刻（MOMENTS系统）
+if event and event.trigger_type in {"intimacy", "praise", "criticism", "care", "milestone"}:
+    state = self.emotion_manager._read_state()
+    emotion_snapshot = state['frontmatter'].get('emotion_state', {})
+    context = user_message[:100]  # 截取前100字符
+    self.emotion_manager.moments.record_moment(
+        event_type=event.trigger_type,
+        context=context,
+        emotion_snapshot=emotion_snapshot
     )
 
 # 4. 语气注入（生成回复前）

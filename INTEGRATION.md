@@ -76,7 +76,30 @@ messages.append(user_message)
 # 检测并更新情绪
 if self.emotion_manager:
     try:
+        # 检测情绪事件
         event = self.emotion_manager.detector.detect_emotion_event(messages)
+        
+        # 更新情绪状态
+        self.emotion_manager.update_emotion_state(messages)
+        
+        # 记录重要时刻（MOMENTS系统）
+        if event and event.trigger_type in {"intimacy", "praise", "criticism", "care", "milestone"}:
+            state = self.emotion_manager._read_state()
+            emotion_snapshot = state['frontmatter'].get('emotion_state', {})
+            
+            # 提取用户消息作为上下文
+            user_text = user_message
+            if isinstance(user_message, dict):
+                user_text = user_message.get('content', '')
+            context = user_text[:100]  # 截取前100字符
+            
+            # 记录时刻
+            self.emotion_manager.moments.record_moment(
+                event_type=event.trigger_type,
+                context=context,
+                emotion_snapshot=emotion_snapshot
+            )
+        
         if event:
             self.emotion_manager.update_emotion_state(
                 messages=messages,
