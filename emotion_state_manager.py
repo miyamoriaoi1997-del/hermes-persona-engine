@@ -436,7 +436,7 @@ class EmotionStateManager:
 
             success = self._write_state(frontmatter, body)
 
-            # ── 10. Record moment ─────────────────────────────────────
+            # ── 10. Record moment (only significant events) ────────────
             if success and event:
                 # Defense-in-depth: skip system message artifacts that
                 # somehow survived the detector's filter.
@@ -450,14 +450,50 @@ class EmotionStateManager:
                 context_text = event.context or ""
                 is_system = any(ind in context_text for ind in _SYSTEM_ARTIFACTS)
                 if not is_system:
-                    try:
-                        self.moments.record_moment(
-                            event_type=event.trigger_type,
-                            context=event.context,
-                            emotion_snapshot=new_state,
-                        )
-                    except Exception:
-                        pass
+                    # ── Significance filter: only record intense moments ──
+                    # Criteria (any one triggers recording):
+                    #   1. Large delta: any dimension |delta| >= 15
+                    #   2. Extreme zone: any dimension >= 105 or <= 15
+                    #   3. Overwhelming emotion_score (|score| >= 3.0)
+                    #   4. Milestone event types (conflict, vulnerability, reunion)
+                    #   5. High confidence + negative event (criticism w/ confidence >= 0.8)
+                    _MILESTONE_TYPES = {"conflict", "vulnerability", "reunion", "milestone"}
+                    is_significant = False
+
+                    # Check 1: large delta
+                    if event.deltas:
+                        max_delta = max(abs(v) for v in event.deltas.values())
+                        if max_delta >= 15:
+                            is_significant = True
+
+                    # Check 2: extreme zone in new_state
+                    if not is_significant:
+                        for v in new_state.values():
+                            if v >= 105 or v <= 15:
+                                is_significant = True
+                                break
+
+                    # Check 3: overwhelming emotion_score
+                    if not is_significant and abs(new_emotion_score) >= 3.0:
+                        is_significant = True
+
+                    # Check 4: milestone event types
+                    if not is_significant and event.trigger_type in _MILESTONE_TYPES:
+                        is_significant = True
+
+                    # Check 5: high-confidence negative event
+                    if not is_significant and event.trigger_type == "criticism" and event.confidence >= 0.8:
+                        is_significant = True
+
+                    if is_significant:
+                        try:
+                            self.moments.record_moment(
+                                event_type=event.trigger_type,
+                                context=event.context,
+                                emotion_snapshot=new_state,
+                            )
+                        except Exception:
+                            pass
 
             # ── 11. Schedule next proactive contact ───────────────────
             if success:
