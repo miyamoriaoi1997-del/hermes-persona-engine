@@ -363,6 +363,29 @@ class EmotionStateManager:
                     if not event and current_state == raw_state:
                         return True
 
+            # ── Decay-only write: event is None but state changed ────
+            if not event:
+                # Write decayed state without event processing
+                state_data = self._read_state()
+                frontmatter = state_data["frontmatter"]
+                decayed_score = self.calculator.compute_emotion_score(current_state)
+                frontmatter["emotion_state"] = {
+                    "affection":      current_state["affection"],
+                    "trust":          current_state["trust"],
+                    "possessiveness": current_state["possessiveness"],
+                    "patience":       current_state["patience"],
+                    "emotion_score":  round(decayed_score, 3),
+                    "current_emotion": round(decayed_score, 3),
+                    "last_update":    datetime.now().isoformat(),
+                    "baselines":      self.calculator.baselines,
+                    "decay_rate":     self.decay_rate,
+                    "inertia":        emotion_state.get("inertia", {}),
+                }
+                body = state_data["body"]
+                if self.update_body:
+                    body = self._generate_emotion_body(current_state, None, decayed_score)
+                return self._write_state(frontmatter, body)
+
             # ── 3. Compute rule_score from event ─────────────────────
             # Map trigger_type to a rule_score in [-3, +3]
             RULE_SCORE_MAP = {
@@ -555,7 +578,7 @@ class EmotionStateManager:
 耐心值: {state['patience']}/100 ({patience_label})
 情绪分值: {emotion_score:+.2f} / 5.00
 
-最近触发: {event.trigger_type} ({event.context})
+最近触发: {event.trigger_type + ' (' + event.context + ')' if event else '(衰减更新)'}
 语气倾向: {tone_desc}"""
         
         return body
