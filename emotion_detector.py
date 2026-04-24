@@ -9,7 +9,10 @@ import logging
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Any
 
-from agent.sentiment_analyzer import SentimentAnalyzer, SentimentResult
+try:
+    from agent.sentiment_analyzer import SentimentAnalyzer, SentimentResult
+except ImportError:
+    from sentiment_analyzer import SentimentAnalyzer, SentimentResult
 
 logger = logging.getLogger(__name__)
 
@@ -428,17 +431,17 @@ class EmotionDetector:
     TRIGGER_DELTAS = {
         'intimacy': {
             'deltas': {
-                'mild':     {'possessiveness': 5,  'affection': 3},
-                'moderate': {'possessiveness': 10, 'affection': 6,  'trust': 3},
-                'intense':  {'possessiveness': 15, 'affection': 10, 'trust': 5},
+                'mild':     {'possessiveness': 5,  'affection': 3,  'patience': 1},
+                'moderate': {'possessiveness': 10, 'affection': 6,  'trust': 3, 'patience': 2},
+                'intense':  {'possessiveness': 15, 'affection': 10, 'trust': 5, 'patience': 3},
             },
             'confidence': 0.9,
         },
         'teasing': {
             'deltas': {
-                'mild':     {'affection': 2,  'possessiveness': 2,  'patience': -1},
-                'moderate': {'affection': 4,  'possessiveness': 4,  'patience': -2},
-                'intense':  {'affection': 6,  'possessiveness': 6,  'patience': -3},
+                'mild':     {'affection': 2,  'possessiveness': 2},
+                'moderate': {'affection': 4,  'possessiveness': 4},
+                'intense':  {'affection': 6,  'possessiveness': 6},
             },
             'confidence': 0.85,
         },
@@ -927,6 +930,7 @@ class EmotionDetector:
                 deltas={
                     "trust": 2,
                     "affection": 1,
+                    "patience": 1,
                 },
                 confidence=0.5,
                 context="normal_interaction"

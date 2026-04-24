@@ -1,10 +1,12 @@
 # Hermes Agent 集成指南
 
-本文档说明如何将 Persona Engine 集成到 Hermes Agent 中。
+本文档说明如何将 Persona Engine 集成到 AI Agent 中。
 
 ## 文件放置
 
-将以下文件复制到 Hermes Agent 的 `agent/` 目录：
+### 方式一：直接放入 agent 目录（推荐）
+
+将以下文件复制到你的 Agent 的源代码目录：
 
 ```bash
 cp emotion_detector.py ~/.hermes/hermes-agent/agent/
@@ -14,32 +16,34 @@ cp sentiment_analyzer.py ~/.hermes/hermes-agent/agent/
 cp moments_manager.py ~/.hermes/hermes-agent/agent/
 ```
 
+### 方式二：独立使用
+
+文件支持 try/except 双重导入，放在任意目录均可：
+
+```python
+# 在 agent/ 目录下时自动使用 from agent.xxx
+# 独立使用时自动回退到 from xxx
+from emotion_state_manager import EmotionStateManager
+```
+
 ## 配置文件
 
-1. 创建 `~/.hermes/SOUL.md`（参考 SOUL.template.md）
-2. 创建 `~/.hermes/STATE.md`（参考 STATE.template.md）
+1. 复制 `SOUL.template.md` → `~/.hermes/SOUL.md`，填入角色设定
+2. 复制 `STATE.template.md` → `~/.hermes/STATE.md`，调整基准线
 
 ## 集成步骤
 
-### 1. 在 run_agent.py 中导入
+### 1. 初始化情绪管理器
 
 ```python
-from agent.emotion_state_manager import EmotionStateManager
-```
+from emotion_state_manager import EmotionStateManager
+# 或: from agent.emotion_state_manager import EmotionStateManager
 
-### 2. 初始化情绪管理器
-
-在 `__init__` 方法中添加：
-
-```python
 def __init__(self, ...):
-    # ... 其他初始化代码
-    
     # 初始化情绪系统
     try:
         self.emotion_manager = EmotionStateManager(
             hermes_home=self.hermes_home,
-            decay_rate=2.0,
             update_body=True
         )
         logger.info("Emotion system initialized")
@@ -48,13 +52,11 @@ def __init__(self, ...):
         self.emotion_manager = None
 ```
 
-### 3. 时间衰减（对话开始时）
-
-在 `run_conversation` 方法开始处添加：
+### 2. 时间衰减（对话开始时）
 
 ```python
 def run_conversation(self, ...):
-    # 应用时间衰减
+    # 应用非线性时间衰减
     if self.emotion_manager:
         try:
             self.emotion_manager.apply_time_decay_if_needed()
@@ -64,9 +66,7 @@ def run_conversation(self, ...):
     # ... 继续对话流程
 ```
 
-### 4. 实时情绪更新（接收消息后）
-
-在接收到用户消息后立即更新情绪：
+### 3. 实时情绪更新（接收消息后）
 
 ```python
 # 接收用户消息
@@ -79,42 +79,32 @@ if self.emotion_manager:
         # 检测情绪事件
         event = self.emotion_manager.detector.detect_emotion_event(messages)
         
-        # 更新情绪状态
-        self.emotion_manager.update_emotion_state(messages)
-        
-        # 记录重要时刻（MOMENTS系统）
-        if event and event.trigger_type in {"intimacy", "praise", "criticism", "care", "milestone"}:
-            state = self.emotion_manager._read_state()
-            emotion_snapshot = state['frontmatter'].get('emotion_state', {})
-            
-            # 提取用户消息作为上下文
-            user_text = user_message
-            if isinstance(user_message, dict):
-                user_text = user_message.get('content', '')
-            context = user_text[:100]  # 截取前100字符
-            
-            # 记录时刻
-            self.emotion_manager.moments.record_moment(
-                event_type=event.trigger_type,
-                context=context,
-                emotion_snapshot=emotion_snapshot
-            )
-        
+        # 更新情绪状态（含 α 阶梯 + momentum 放大）
         if event:
             self.emotion_manager.update_emotion_state(
                 messages=messages,
                 trigger_event=event
             )
+        
+        # 记录重要时刻
+        if event and event.significance >= 0.7:
+            state = self.emotion_manager._read_state()
+            emotion_snapshot = state['frontmatter'].get('emotion_state', {})
+            user_text = user_message
+            if isinstance(user_message, dict):
+                user_text = user_message.get('content', '')
+            self.emotion_manager.moments.record_moment(
+                event_type=event.trigger_type,
+                context=user_text[:100],
+                emotion_snapshot=emotion_snapshot
+            )
     except Exception as e:
         logger.warning(f"Emotion update failed: {e}")
 ```
 
-### 5. 语气注入（生成回复前）
-
-在构建系统提示词时注入情绪修饰符：
+### 4. 语气注入（生成回复前）
 
 ```python
-# 生成语气修饰符
 tone_modifier = ""
 if self.emotion_manager:
     try:
@@ -132,14 +122,20 @@ system_prompt = f"""
 """
 ```
 
+语气注入有三级模式：
+- **mild**（偏离 <15 点）：不注入
+- **moderate**（15-45 点）：单次注入到系统提示词
+- **overwhelming**（≥45 点）：三明治注入（头尾双插），优先级高于人格约束
+
 ## 完整示例
 
 ```python
-class HermesAgent:
+from pathlib import Path
+from emotion_state_manager import EmotionStateManager
+
+class MyAgent:
     def __init__(self, hermes_home):
         self.hermes_home = Path(hermes_home)
-        
-        # 初始化情绪系统
         self.emotion_manager = EmotionStateManager(
             hermes_home=self.hermes_home
         )
@@ -173,12 +169,26 @@ class HermesAgent:
         return response
 ```
 
+## 核心参数速查
+
+| 参数 | 值 | 说明 |
+|------|------|------|
+| 基准线默认值 | 60 | 四维度统一基准 |
+| 衰减（<15点偏离）| 0.35/h | 半衰期 ~2h |
+| 衰减（15-45点）| 0.12/h | 半衰期 ~5.8h |
+| 衰减（>45点）| 0.03/h | 半衰期 ~23h |
+| Alpha 阶梯 | 0.35→0.75 | 5级，连续同向递增 |
+| Momentum | 1.0→1.4x | 5级放大倍率 |
+| 失控阈值 | 45 点 | 偏离基线触发 overwhelming |
+| trust→patience | scale = trust/baseline | trust<baseline 时抑制 patience 变化 |
+
 ## 注意事项
 
 1. **异常处理**：所有情绪系统调用都应包裹在 try-except 中，避免影响主流程
-2. **性能优化**：神经模型已在初始化时预加载，首次检测无延迟
-3. **日志记录**：建议记录情绪触发事件，便于调试
+2. **性能优化**：神经模型在初始化时预加载，首次检测无延迟
+3. **graceful 降级**：torch 不可用时自动回退到纯规则模式
 4. **状态持久化**：情绪状态自动保存到 STATE.md，无需手动处理
+5. **SOUL.md 解析**：EmotionStateManager 自动从 SOUL.md 提取角色名用于自指检测
 
 ## 调试
 
@@ -191,7 +201,7 @@ cat ~/.hermes/STATE.md
 测试情绪检测：
 
 ```python
-from agent.emotion_state_manager import EmotionStateManager
+from emotion_state_manager import EmotionStateManager
 
 manager = EmotionStateManager(hermes_home='/path/to/.hermes')
 messages = [{'role': 'user', 'content': '你真棒！'}]
@@ -200,6 +210,13 @@ event = manager.detector.detect_emotion_event(messages)
 if event:
     print(f"触发: {event.trigger_type}")
     print(f"变化: {event.deltas}")
+    print(f"置信度: {event.confidence}")
+```
+
+查看关系记忆：
+
+```bash
+cat ~/.hermes/MOMENTS.md
 ```
 
 ## 性能指标
@@ -207,4 +224,5 @@ if event:
 - 情绪检测耗时：125-329ms（含神经模型推理）
 - 状态更新耗时：<10ms
 - 内存占用：+266MB（神经模型）
-- 首次加载：1-2秒（预加载后无延迟）
+- 首次加载：1-2 秒（预加载后无延迟）
+- 纯规则模式：<5ms，0 额外内存

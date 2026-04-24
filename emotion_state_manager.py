@@ -11,8 +11,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, List
 
-from agent.emotion_detector import EmotionDetector, EmotionEvent
-from agent.emotion_calculator import EmotionCalculator
+try:
+    from agent.emotion_detector import EmotionDetector, EmotionEvent
+except ImportError:
+    from emotion_detector import EmotionDetector, EmotionEvent
+try:
+    from agent.emotion_calculator import EmotionCalculator
+except ImportError:
+    from emotion_calculator import EmotionCalculator
 
 
 def _parse_agent_names_from_soul(soul_path: Path) -> List[str]:
@@ -96,7 +102,10 @@ class EmotionStateManager:
             pass  # fresh state, will initialize on first write
         
         # Relationship memory — records significant moments
-        from agent.moments_manager import MomentsManager
+        try:
+            from agent.moments_manager import MomentsManager
+        except ImportError:
+            from moments_manager import MomentsManager
         self.moments = MomentsManager(hermes_home=self.hermes_home)
         
         # Preload sentiment analyzer to avoid first-call latency
@@ -374,7 +383,10 @@ class EmotionStateManager:
             # Skip if rule signal is already strong (|rule_score| >= 2)
             continuous_score = 0.0
             if abs(rule_score) < 2.0 and self.detector._analyzer is not None:
-                from agent.sentiment_analyzer import SentimentAnalyzer
+                try:
+                    from agent.sentiment_analyzer import SentimentAnalyzer
+                except ImportError:
+                    from sentiment_analyzer import SentimentAnalyzer
                 user_messages = [m for m in messages if m.get("role") == "user"]
                 if user_messages:
                     user_text = self.detector._extract_text(

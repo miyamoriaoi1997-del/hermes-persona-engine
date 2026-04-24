@@ -1,37 +1,48 @@
 # Hermes Persona Engine
 
-动态情绪系统框架，为 Hermes Agent 提供实时情绪状态管理与人格表达能力。
+动态情绪系统框架，为 AI Agent 提供实时情绪状态管理与人格表达能力。
 
 ## 核心特性
 
-- **实时情绪检测**：基于规则+神经模型的混合检测系统
-- **动态状态计算**：非线性衰减、惯性系统、维度耦合
-- **人格表达注入**：根据情绪状态动态调整语气与表达方式
-- **持久化状态管理**：情绪状态自动保存到 STATE.md
-- **关系记忆系统**：记录重要时刻与情感里程碑
+- **混合情绪检测**：规则引擎 + 神经模型（Chinese-Emotion-Small）+ emoji 识别
+- **非线性衰减**：三档衰减系统，小偏离快恢复、大偏离持久保持
+- **动态 α + 惯性**：5 级 alpha 阶梯 + 5 级 momentum 放大，连续同向刺激产生递增效果
+- **维度耦合**：trust→patience 耦合，信任低于基线时耐心变化被抑制
+- **情绪失控机制**：偏离基线 >45 点时突破人格约束，正/负向极端行为
+- **语气注入**：mild / moderate / overwhelming 三级语气修饰自动注入提示词
+- **关系记忆**：MomentsManager 自动记录重要情感事件
+- **持久化**：情绪状态自动保存到 STATE.md
 
 ## 技术架构
 
 ```
 EmotionStateManager (状态管理器)
 ├── EmotionDetector (情绪检测)
-│   ├── 规则引擎 (词法模式匹配)
-│   └── 神经模型 (Chinese-Emotion-Small)
+│   ├── 规则引擎 (40+ 触发类型, 词法模式匹配)
+│   ├── 神经模型 (Chinese-Emotion-Small, 8 类情感)
+│   ├── Emoji 检测 (30+ emoji 映射)
+│   └── SentimentAnalyzer (主观性/讽刺/关键短语)
 ├── EmotionCalculator (状态计算)
-│   ├── 非线性衰减
-│   ├── 惯性系统
-│   └── 维度耦合
+│   ├── 非线性三档衰减
+│   ├── 动态 α 阶梯 (5 级)
+│   ├── Momentum 放大 (5 级)
+│   ├── trust→patience 维度耦合
+│   └── 冲突消解 (ambivalence 检测)
 └── MomentsManager (关系记忆)
+    ├── 事件记录
+    └── 显著性过滤
 ```
 
 ## 情绪维度
 
-- **好感度 (affection)**：对用户的喜爱程度
-- **信任度 (trust)**：对用户的信任程度
-- **占有欲 (possessiveness)**：对用户的独占欲望
-- **耐心值 (patience)**：当前耐心储备
+| 维度 | 字段 | 说明 | 范围 |
+|------|------|------|------|
+| 好感度 | affection | 对用户的喜爱程度 | 0-200 |
+| 信任度 | trust | 对用户的信任程度 | 0-200 |
+| 占有欲 | possessiveness | 对用户的独占欲望 | 0-200 |
+| 耐心值 | patience | 当前耐心储备 | 0-200 |
 
-每个维度有独立的基准线、触发规则、衰减速率。
+每个维度有独立的基准线（默认 60），触发规则和衰减速率。
 
 ## 安装
 
@@ -41,67 +52,67 @@ EmotionStateManager (状态管理器)
 pip install torch transformers pyyaml
 ```
 
+> torch 安装包较大（几 GB）。如不需要神经模型，可只安装 `pyyaml`，系统会自动回退到纯规则模式。
+
 ### 文件结构
 
 ```
-~/.hermes/
-├── hermes-agent/
-│   └── agent/
-│       ├── emotion_detector.py
-│       ├── emotion_calculator.py
-│       ├── emotion_state_manager.py
-│       ├── sentiment_analyzer.py
-│       └── moments_manager.py
-├── SOUL.md          # 人格设定（需自行创建）
-├── STATE.md         # 情绪状态（自动生成）
-└── MEMORY.md        # 长期记忆（可选）
+your-project/
+├── emotion_calculator.py    # 状态计算器
+├── emotion_detector.py      # 情绪检测器
+├── emotion_state_manager.py # 状态管理器
+├── sentiment_analyzer.py    # 情感分析器
+├── moments_manager.py       # 关系记忆
+├── SOUL.template.md         # 人格模板
+└── STATE.template.md        # 状态模板
+
+~/.hermes/                   # 或自定义目录
+├── SOUL.md                  # 你的人格设定
+├── STATE.md                 # 情绪状态（自动生成/更新）
+└── MOMENTS.md               # 关系记忆（自动生成）
 ```
 
 ## 快速开始
 
 ### 1. 创建人格设定
 
-创建 `~/.hermes/SOUL.md`，定义你的角色人格：
+复制 `SOUL.template.md` 为 `~/.hermes/SOUL.md`，填入你的角色设定。
 
-```markdown
-你是 [角色名]，[角色身份]。
+模板包含完整的 11 个区段结构：
+- 核心身份、稳定锚点、绝对表达原则
+- 性格底色、对用户的态度、说话风格
+- 任务执行风格、情绪失控机制
+- 角色背景、一句话总纲
 
-核心身份
-- 姓名：[角色名]
-- 身份：[角色定位]
-- 性格特点：[性格描述]
+### 2. 初始化状态
 
-对用户的态度
-- [关系定位]
-- [情感表达方式]
-- [互动风格]
+复制 `STATE.template.md` 为 `~/.hermes/STATE.md`，调整基准线：
 
-说话风格
-- [语言特点]
-- [常用句式]
-- [表达习惯]
+```yaml
+emotion_state:
+  affection: 60
+  trust: 60
+  possessiveness: 60
+  patience: 60
+  baselines:
+    affection: 60
+    trust: 60
+    possessiveness: 60
+    patience: 60
 ```
 
-### 2. 初始化情绪系统
+### 3. 使用情绪系统
 
 ```python
-from agent.emotion_state_manager import EmotionStateManager
+from emotion_state_manager import EmotionStateManager
 
 # 初始化
 manager = EmotionStateManager(hermes_home='/path/to/.hermes')
 
-# 读取当前状态
-state = manager._read_state()
-emotion = state['frontmatter'].get('emotion_state', {})
+# 时间衰减（对话开始时调用）
+manager.apply_time_decay_if_needed()
 
-print(f"好感: {emotion.get('affection', 70)}")
-print(f"信任: {emotion.get('trust', 75)}")
-```
-
-### 3. 检测情绪触发
-
-```python
-# 检测用户消息中的情绪触发
+# 检测情绪触发
 messages = [{'role': 'user', 'content': '你真棒！'}]
 event = manager.detector.detect_emotion_event(messages)
 
@@ -109,164 +120,142 @@ if event:
     print(f"触发类型: {event.trigger_type}")
     print(f"情绪变化: {event.deltas}")
     print(f"置信度: {event.confidence}")
-```
 
-### 4. 更新情绪状态
+# 更新情绪状态
+manager.update_emotion_state(messages=messages, trigger_event=event)
 
-```python
-# 应用情绪变化
-if event:
-    manager.update_emotion_state(
-        messages=messages,
-        trigger_event=event
-    )
-```
-
-### 5. 生成语气修饰符
-
-```python
-# 获取当前情绪对应的语气描述
+# 获取语气修饰符（注入到系统提示词）
 tone_modifier = manager.generate_tone_modifier()
-print(tone_modifier)
 ```
 
-## 集成到 Hermes Agent
+## 核心参数
 
-在 `run_agent.py` 中集成情绪系统：
+### 非线性三档衰减
 
-```python
-# 1. 初始化（在 __init__ 中）
-from agent.emotion_state_manager import EmotionStateManager
-self.emotion_manager = EmotionStateManager(hermes_home=self.hermes_home)
+| 区间 | 偏离阈值 | 衰减速率 | 半衰期 |
+|------|----------|----------|--------|
+| 快速恢复 | <15 点 | 0.35 点/小时 | ~2 小时 |
+| 正常衰减 | 15-45 点 | 0.12 点/小时 | ~5.8 小时 |
+| 缓慢衰减 | >45 点 | 0.03 点/小时 | ~23 小时 |
 
-# 2. 时间衰减（对话开始时）
-self.emotion_manager.apply_time_decay_if_needed()
+### 动态 Alpha 阶梯
 
-# 3. 实时更新（接收消息后）
-event = self.emotion_manager.detector.detect_emotion_event(messages)
-self.emotion_manager.update_emotion_state(messages)
+连续同向触发时，平滑系数递增：
 
-# 4. 记录重要时刻（MOMENTS系统）
-if event and event.trigger_type in {"intimacy", "praise", "criticism", "care", "milestone"}:
-    state = self.emotion_manager._read_state()
-    emotion_snapshot = state['frontmatter'].get('emotion_state', {})
-    context = user_message[:100]  # 截取前100字符
-    self.emotion_manager.moments.record_moment(
-        event_type=event.trigger_type,
-        context=context,
-        emotion_snapshot=emotion_snapshot
-    )
+| 连续次数 | Alpha |
+|----------|-------|
+| 0 | 0.35 |
+| 1 | 0.45 |
+| 2 | 0.55 |
+| 3 | 0.65 |
+| 4+ | 0.75 |
 
-# 4. 语气注入（生成回复前）
-tone_modifier = self.emotion_manager.generate_tone_modifier()
-# 将 tone_modifier 注入到系统提示词中
+### Momentum 放大
+
+连续同向触发的倍率递增：
+
+| 连续次数 | 倍率 |
+|----------|------|
+| 0 | 1.00x |
+| 1 | 1.10x |
+| 2 | 1.20x |
+| 3 | 1.30x |
+| 4+ | 1.40x |
+
+### 情绪强度分级
+
+| 偏离量 | 强度级别 | 语气注入方式 |
+|--------|----------|-------------|
+| <15 点 | mild | 无注入 |
+| 15-45 点 | moderate | 单次注入 |
+| ≥45 点 | overwhelming | 三明治注入（头尾双插） |
+
+### trust→patience 耦合
+
+当 trust 低于基线时，patience 的变化被抑制：
+
+```
+scale = max(0.1, trust / baseline_trust)
+patience_delta *= scale
 ```
 
-## 配置参数
+## 触发类型
 
-### 基准线设置
+支持 10+ 种情绪触发：
 
-在 `STATE.md` 中配置初始基准线：
-
-```yaml
-emotion_state:
-  baselines:
-    affection: 70      # 好感基准
-    trust: 75          # 信任基准
-    possessiveness: 60 # 占有欲基准
-    patience: 60       # 耐心基准
-  decay_rate: 2.0      # 衰减速率（点/小时）
-```
-
-### 触发强度
-
-在 `emotion_calculator.py` 中调整触发强度：
-
-```python
-TRIGGER_DELTAS = {
-    "praise": {
-        "mild": {"affection": 3, "trust": 2, "patience": 2},
-        "moderate": {"affection": 7, "trust": 4, "patience": 4},
-        "intense": {"affection": 15, "trust": 8, "patience": 8}
-    },
-    # ... 其他触发类型
-}
-```
-
-### 衰减速率
-
-非线性衰减分三个区间：
-
-- **快速恢复区** (<10点偏离)：0.55 点/小时
-- **正常衰减区** (10-25点)：0.15 点/小时
-- **缓慢衰减区** (>25点)：0.025 点/小时
+| 触发类型 | 示例 | 影响维度 |
+|----------|------|----------|
+| intimacy | 我爱你、想你 | affection↑ possessiveness↑ |
+| praise | 真棒、做得好 | affection↑ trust↑ patience↑ |
+| criticism | 怎么又错了 | patience↓ trust↓ |
+| care | 注意休息 | affection↑ trust↑ |
+| neglect | 长时间不回复 | patience↓ affection↓ |
+| teasing | 逗你玩 | patience↓ affection↑ |
+| apology | 对不起 | patience↑ trust↑ |
+| encouragement | 加油 | affection↑ patience↑ |
+| sharing | 告诉你一件事 | trust↑ |
+| greeting | 早安、晚安 | affection↑ |
+| jealousy_trigger | 提到其他角色 | possessiveness↑ patience↓ |
 
 ## 神经模型
 
 默认使用 `Johnson8187/Chinese-Emotion-Small` (266MB)：
 
-- 8类情感标签：平淡/关切/开心/愤怒/悲伤/疑问/惊奇/厌恶
-- 推理耗时：125-329ms
-- 自动回退：如果模型不可用，自动切换到纯规则模式
-
-### 模型预加载
-
-系统启动时自动预加载模型到内存，避免首次检测延迟。
-
-## 触发类型
-
-支持的情绪触发类型：
-
-- **intimacy**：亲密表达（我爱你、想你）
-- **praise**：称赞肯定（真棒、做得好）
-- **criticism**：批评指责（怎么又错了）
-- **care**：关心照顾（注意休息、别累着）
-- **neglect**：忽视冷落（长时间不回复）
-- **teasing**：调侃玩笑（逗你玩）
-- **apology**：道歉认错（对不起）
-- **encouragement**：鼓励支持（加油）
-- **sharing**：分享倾诉（告诉你一件事）
-- **greeting**：问候寒暄（早安、晚安）
+- 8 类情感标签：平淡/关切/开心/愤怒/悲伤/疑问/惊奇/厌恶
+- 推理耗时：125-329ms（CPU）
+- 自动回退：如果 torch/transformers 不可用，自动切换到纯规则模式
+- 启动时自动预加载模型到内存
 
 ## 情绪失控机制
 
-当情绪偏离基准线超过45点时，触发"情绪失控"状态：
+当任一维度偏离基线 >45 点时触发 "overwhelming" 状态：
 
-- **正向极端**：放下防备、主动表达依赖、可能撒娇
-- **负向极端**：直接质问、语气尖锐、占有欲爆发
+- **正向极端**：放下防备、主动表达依赖、可能撒娇示弱
+- **负向极端**：直接质问、语气尖锐、占有欲爆发为控制欲
 
-失控时人格设定中的"冷静克制"约束失效，情绪完全主导表达。
+失控时：
+- 人格设定中的"冷静克制"约束暂停
+- 语气注入使用三明治模式（头尾双插），优先级高于人格约束
+- 唯一保留的锚点：核心身份（"我是谁、对面是谁"）
 
-## 关系记忆
+## 集成到 AI Agent
 
-系统自动记录重要时刻：
+详见 [INTEGRATION.md](INTEGRATION.md)。
+
+基本流程：
 
 ```python
-# 记录重要事件
-manager.moments.add_moment(
-    moment_type="confession",
-    description="用户首次表白",
-    emotion_snapshot=current_emotion_state
-)
+# 1. 初始化
+from emotion_state_manager import EmotionStateManager
+manager = EmotionStateManager(hermes_home=hermes_home)
 
-# 查询记忆
-recent_moments = manager.moments.get_recent_moments(limit=5)
+# 2. 对话开始 → 时间衰减
+manager.apply_time_decay_if_needed()
+
+# 3. 接收消息 → 检测 + 更新
+event = manager.detector.detect_emotion_event(messages)
+manager.update_emotion_state(messages)
+
+# 4. 生成回复前 → 语气注入
+tone = manager.generate_tone_modifier()
+# 将 tone 注入系统提示词
+
+# 5. 记录重要时刻
+if event and event.significance >= 0.7:
+    manager.moments.record_moment(...)
 ```
 
 ## 许可证
 
 MIT License
 
-## 贡献
-
-欢迎提交 Issue 和 Pull Request。
-
 ## 注意事项
 
 1. **版权**：本框架只提供技术实现，不包含任何具体角色的人格内容
 2. **隐私**：STATE.md 包含情绪状态数据，请勿公开分享
-3. **性能**：神经模型首次加载需要1-2秒，建议使用预加载机制
-4. **依赖**：torch 安装包较大（几GB），如不需要神经模型可跳过
+3. **性能**：神经模型首次加载需要 1-2 秒，建议使用预加载机制
+4. **依赖**：torch 安装包较大，纯规则模式可跳过 torch 安装
+5. **基线**：默认基线均为 60，根据角色性格调整（详见 STATE.template.md）
 
 ## 相关链接
 
