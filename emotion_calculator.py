@@ -29,12 +29,12 @@ class EmotionCalculator:
 
     # ── Dynamic α parameters ─────────────────────────────────────────
     # α escalates with consecutive same-direction triggers, resets on reversal
-    ALPHA_STAGES = [0.35, 0.45, 0.55, 0.65, 0.75]  # stage 0→1→2→3→4
+    ALPHA_STAGES = [0.35, 0.40, 0.45, 0.50, 0.55]  # stage 0→1→2→3→4
     ALPHA_RESET = 0.35                               # on direction reversal
 
     # ── Momentum (inertia) parameters ────────────────────────────────
     MOMENTUM_HISTORY = 5          # track last N trigger directions
-    MOMENTUM_STAGES = [1.0, 1.10, 1.20, 1.30, 1.40]  # multiplier per consecutive count
+    MOMENTUM_STAGES = [1.0, 1.05, 1.10, 1.15, 1.20]  # multiplier per consecutive count
 
     # ── Non-linear decay parameters ──────────────────────────────────
     # Deviation from baseline → decay factor per hour
