@@ -605,6 +605,9 @@ class EmotionStateManager:
         overall_intensity = modifier_result["overall_intensity"]
         framework = modifier_result["framework"]
         footnote = modifier_result["footnote"]
+
+        # Desire control — placed FIRST for maximum attention weight
+        desire = modifier_result.get("desire", "")
         
         # Build per-dimension instruction lines
         modifier_lines = []
@@ -615,6 +618,8 @@ class EmotionStateManager:
         
         return f"""
 <emotion_modifier>
+{desire}
+
 {framework}
 
 {modifier_text}

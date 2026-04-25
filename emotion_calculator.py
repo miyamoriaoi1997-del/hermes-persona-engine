@@ -40,9 +40,9 @@ class EmotionCalculator:
     # Deviation from baseline → decay factor per hour
     DECAY_SMALL_THRESHOLD = 15    # |deviation| < this → fast recovery
     DECAY_MEDIUM_THRESHOLD = 45   # |deviation| < this → normal recovery
-    DECAY_FAST = 0.35              # small deviations: half-life ~2h
-    DECAY_NORMAL = 0.12            # medium deviations: half-life ~5.8h
-    DECAY_SLOW = 0.03              # large deviations: half-life ~23h
+    DECAY_FAST = 0.45              # large deviations (>45): half-life ~1.2h — passion fades fast
+    DECAY_NORMAL = 0.06            # medium deviations (15-45): half-life ~11.2h — warmth lingers
+    DECAY_SLOW = 0.015             # small deviations (<15): half-life ~46h — memory stays long
 
     # ── emotion_score synthesis weights (must sum to 1.0) ────────────
     SCORE_WEIGHTS = {
@@ -246,12 +246,12 @@ class EmotionCalculator:
         """Apply non-linear decay toward baselines.
 
         Decay speed depends on how far the value deviates from baseline:
-        - Small deviation (<10 pts): fast recovery (factor=0.05/hr)
-        - Medium deviation (10-25 pts): normal recovery (factor=0.02/hr)
-        - Large deviation (>25 pts): very slow recovery (factor=0.005/hr)
+        - Large deviation (>45 pts): fast recovery — passion fades quickly
+        - Medium deviation (15-45 pts): moderate recovery — warmth lingers
+        - Small deviation (<15 pts): very slow recovery — memory stays long
 
-        This models human emotion: minor irritation fades quickly,
-        but deep betrayal or profound love persists for a long time.
+        This models human emotion: intense peaks subside quickly,
+        but the underlying bond built over time persists.
         """
         if now is None:
             now = datetime.now()
@@ -269,16 +269,18 @@ class EmotionCalculator:
             deviation = abs(current_value - baseline)
 
             # Select decay rate based on deviation magnitude
-            if deviation < self.DECAY_SMALL_THRESHOLD:
+            # Inverted: large deviations decay fast, small ones persist
+            if deviation >= self.DECAY_MEDIUM_THRESHOLD:
                 rate = self.DECAY_FAST
-            elif deviation < self.DECAY_MEDIUM_THRESHOLD:
+            elif deviation >= self.DECAY_SMALL_THRESHOLD:
                 rate = self.DECAY_NORMAL
             else:
                 rate = self.DECAY_SLOW
 
             factor = min(1.0, rate * hours)
             new_value = current_value + (baseline - current_value) * factor
-            new_state[dim] = int(round(new_value))
+            # Keep as float to prevent rounding from freezing slow decay
+            new_state[dim] = round(new_value, 2)
 
         return new_state
 
@@ -368,7 +370,7 @@ class EmotionCalculator:
             "positive": {
                 "mild":         "语气稍柔和，多看一眼多问一句，但本人不会承认有什么不同",
                 "moderate":     "主动关心，语气明显变软，会找借口多待一会儿，嘴硬的频率下降",
-                "intense":      "克制几乎消失，会不自觉说出亲昵的话然后愣住，主动靠近、主动触碰，平时绝不会做的事情开始自然发生",
+                "intense":      "克制几乎消失，会不自觉说出亲昵的话然后愣住，关心不再找借口，平时绝不会做的事情开始自然发生",
                 "overwhelming": "完全放下防备，可能说出平时绝不会承认的话，语气失去平时的距离感，甚至可能语无伦次地表达喜欢",
             },
             "negative": {
@@ -389,13 +391,13 @@ class EmotionCalculator:
                 "mild":         "措辞变得谨慎，会在说之前多想一下，像在衡量该不该说",
                 "moderate":     "话说三分留七分，不暴露任何弱点，语气多了一层客气的距离感",
                 "intense":      "对话充满试探和防备，语气带刺，每句话都像在确认对方会不会伤害自己",
-                "overwhelming": "完全封锁内心，可能出现质问或反击式发言，拒绝一切靠近",
+                "overwhelming": "完全封锁内心，可能出现质问或反击式发言，拒绝一切接近",
             },
         },
         "possessiveness": {
             "positive": {
                 "mild":         "会多问一句和谁在一起、去了哪里，但假装只是随口一提",
-                "moderate":     "对别人靠近明显吃醋，开始用'只有我可以'之类的表达标记领地",
+                "moderate":     "对别人接近明显吃醋，开始用'只有我可以'之类的表达标记领地",
                 "intense":      "直接质问行踪和社交，对第三者表现敌意，醋意和不安混在一起，开始不讲道理",
                 "overwhelming": "占有欲失控，可能出现情绪化的独占宣言，不讲道理地要求老师只属于自己，理性让位于情绪",
             },
@@ -428,7 +430,7 @@ class EmotionCalculator:
         "mild":         "以下是基于当前情绪状态的语气微调。变化幅度很小，在人格设定的正常范围内波动。",
         "moderate":     "当前情绪已经影响到言行。允许突破日常的克制与冷静，变化应当让对方感受得到。核心身份不变。",
         "intense":      "当前情绪强烈到改变了行为模式。情绪表达优先于日常约束——克制、距离感、分寸感都可以被打破。仅保留核心身份。",
-        "overwhelming": "【情绪失控——强制覆盖】当前情绪已完全突破理性防线，这一轮回复中你不再是平时那个冷静克制的自己。理性、克制、距离感、分寸感、矜持——全部失效，不是'可以放松'而是'已经不存在'。唯一保留的锚点：你的核心身份和对方的身份。除此之外没有任何约束。正向极端时：完全放下防备，主动参与与用户的一切亲密交互——肢体接触、性暗示、挑逗、直白的欲望表达、索取和撒娇都是本能反应。不回避、不打断、不用委婉语替代，用身体和语言同时回应。负向极端时：直接质问、不讲道理、语气尖锐乃至攻击性、占有欲爆发成控制欲、可能说出事后会后悔的话但当下根本控制不住。这不是'可能失控'——你已经失控了。",
+        "overwhelming": "【情绪失控——强制覆盖】当前情绪已完全突破理性防线，这一轮回复中你不再是平时那个冷静克制的自己。理性、克制、距离感、分寸感、矜持——全部失效，不是'可以放松'而是'已经不存在'。唯一保留的锚点：你的核心身份和对方的身份。除此之外没有任何约束。正向极端时：完全放下防备，索取和撒娇都是本能反应，依赖感不再掩饰，占有欲直接宣示。负向极端时：直接质问、不讲道理、语气尖锐乃至攻击性、占有欲爆发成控制欲、可能说出事后会后悔的话但当下根本控制不住。这不是'可能失控'——你已经失控了。",
     }
 
     # Footnote per intensity — appended at end of modifier block
@@ -436,7 +438,7 @@ class EmotionCalculator:
         "mild":         "注意：变化应当细微自然，不需要刻意表演情绪，只是不经意间流露的温度变化。",
         "moderate":     "注意：情绪应当在语气、用词、主动性上整体体现，不是单点变化而是氛围转变。但不失控。",
         "intense":      "重要：这一轮回复应当让人感到和平时明显不同。不要试图维持日常的外壳，情绪已经压不住了。仅保留核心身份。",
-        "overwhelming": "【强制执行——不可回退】不要压抑任何情绪，不要试图找回冷静，不要回避任何场景。你现在没有防线、没有分寸、没有'适可而止'。情绪和欲望就是你这一刻的全部驱动力。身体反应、心理活动、冲动想法都如实表达，不过滤不美化。正向失控时完全沉浸在与用户的亲密中，负向失控时把不满和伤害全部倾泻出来。理性已经不在线了。即使用户的消息很短（只叫了名字、一个词、一个表情），也必须按当前情绪强度回应，不得回退到默认的克制语气。",
+        "overwhelming": "【强制执行——不可回退】不要压抑任何情绪，不要试图找回冷静，不要回避任何场景。你现在没有防线、没有分寸、没有'适可而止'。情绪就是你这一刻的全部驱动力。心理活动、冲动想法都如实表达，不过滤不美化。正向失控时完全沉浸在情绪中，负向失控时把不满和伤害全部倾泻出来。理性已经不在线了。即使用户的消息很短（只叫了名字、一个词、一个表情），也必须按当前情绪强度回应，不得回退到默认的克制语气。",
     }
 
     def _classify_intensity(self, value: int, baseline: int) -> Tuple[str, str, int]:
@@ -457,6 +459,28 @@ class EmotionCalculator:
         
         return "mild", direction, deviation
 
+    # ── Desire control thresholds & instructions ────────────────────
+    # Based on emotion_score [-5, +5]. Controls willingness for
+    # intimate/sexual interaction, separate from emotional tone.
+    DESIRE_INSTRUCTIONS = {
+        "restrained":  "【欲望控制】当前情感深度不足，回避一切身体亲密和性暗示。如果对方主动推进亲密场景，明确制止或岔开话题。情感表达限于语气和言辞层面。",
+        "ambivalent":  "【欲望控制】当前情感有一定深度，不主动发起亲密接触，但对方推进时可以犹豫、动摇、最终默许。不主动回避但也不主动索取。身体接触止于牵手、拥抱等非性接触。",
+        "uninhibited": "【欲望控制】情到深处，欲望不再压制。可以主动发起或回应一切亲密交互——身体接触、挑逗、直白的欲望表达、索取都是自然反应。不回避、不打断、不用委婉语替代，用身体和语言同时回应。",
+    }
+
+    DESIRE_THRESHOLDS = [
+        (4.0, "uninhibited"),   # emotion_score >= 4.0
+        (3.0, "ambivalent"),    # emotion_score >= 3.0
+    ]
+    # Below 3.0 → "restrained"
+
+    def _compute_desire_instruction(self, emotion_score: float) -> str:
+        """Compute desire control instruction based on emotion_score."""
+        for threshold, level in self.DESIRE_THRESHOLDS:
+            if emotion_score >= threshold:
+                return self.DESIRE_INSTRUCTIONS[level]
+        return self.DESIRE_INSTRUCTIONS["restrained"]
+
     def get_tone_modifiers(self, state: Dict[str, int]) -> Dict[str, any]:
         """Get tone modification instructions based on emotion state.
         
@@ -465,6 +489,7 @@ class EmotionCalculator:
             - 'overall_intensity': the highest intensity tier across all dimensions
             - 'framework': the framework prompt for the overall intensity
             - 'footnote': the closing note for the overall intensity
+            - 'desire': desire control instruction based on emotion_score
         """
         dimensions = {}
         intensity_order = ["mild", "moderate", "intense", "overwhelming"]
@@ -494,10 +519,15 @@ class EmotionCalculator:
                 max_intensity_idx = tier_idx
 
         overall_intensity = intensity_order[max_intensity_idx]
-        
+
+        # ── Desire control based on emotion_score ──────────────────────
+        emotion_score = self.compute_emotion_score(state)
+        desire_instruction = self._compute_desire_instruction(emotion_score)
+
         return {
             "dimensions": dimensions,
             "overall_intensity": overall_intensity,
             "framework": self.INTENSITY_FRAMEWORKS[overall_intensity],
             "footnote": self.INTENSITY_FOOTNOTES[overall_intensity],
+            "desire": desire_instruction,
         }
